@@ -3,12 +3,10 @@ import os
 import asyncio
 import httpx
 import yt_dlp
+import random
+import shutil
 from telegram import Update
-from telegram.ext import ApplicationBuilder
-from telegram.ext import CommandHandler
-from telegram.ext import MessageHandler
-from telegram.ext import filters
-from telegram.ext import ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,6 +15,21 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TOKEN_HERE")
 SHRINKME_API = os.getenv("SHRINKME_API", "e985afe0b57e6f737cb84e3109b2fbee91b93c32")
 ADMIN = "@qodircg"
 
+# Qiziqarli uzr so'rash matnlari
+APOLOGY_MESSAGES = [
+    "😅 Kechirasiz, xayolim bir zumda Marsga uchib ketgan edi. Marsliklar video yuklashda yordam berishmadi... Qaytadan urunib ko'ring!",
+    "🤖 Xayolimdagi robotlar videoni yeyib qo'yishdi! Kechirasiz, qayta uruning.",
+    "🐱 Xayolimdagi mushuk klaviaturada yurib, kodlarni buzib tashladi. Kechirasiz! Admin bilan bog'lanishingiz mumkin: " + ADMIN,
+    "🎈 Xayolim uchib ketdi, hozir uni qaytarib olishga harakat qilaman... Ammo video yuklanmadi. Iltimos, keyinroq urunib ko'ring!",
+    "🍕 Xayolim pitsa yetkazib berish haqida edi, shu sababli videoni yuklay olmadim. Kechirasiz!",
+    "💤 Xayolim uxlab qolgan ekan... Men uni uyg'otishga urinaman. Siz esa qaytadan urinib ko'ring!",
+    "🌀 Xayolim girdobga tushib ketdi. Videoni saqlab qololmadi. Kechirasiz!",
+    "🎮 Xayolim video o'yin o'ynab yuribdi, ishga kelishni unutibdi. Kechirasiz, qaytadan uruning."
+]
+
+async def random_apology() -> str:
+    """Tasodifiy qiziqarli uzr matnini qaytaradi"""
+    return random.choice(APOLOGY_MESSAGES)
 
 async def shorten(url):
     try:
@@ -33,7 +46,6 @@ async def shorten(url):
         logger.error(e)
     return url
 
-
 async def catbox(path):
     try:
         async with httpx.AsyncClient() as c:
@@ -48,7 +60,6 @@ async def catbox(path):
     except Exception as e:
         logger.error(e)
     return ""
-
 
 async def download(url, folder):
     os.makedirs(folder, exist_ok=True)
@@ -71,12 +82,12 @@ async def download(url, folder):
             result.append(os.path.join(folder, f))
     return sorted(result)
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Salom! YouTube video linkini yuboring!\nMuammo: " + ADMIN
+        "Salom! YouTube video linkini yuboring!\n"
+        "Agar xato chiqsa, xayolim adashib qolgan bo'lishi mumkin 😅\n"
+        "Muammo: " + ADMIN
     )
-
 
 async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
@@ -86,7 +97,8 @@ async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         files = await download(url, folder)
         if not files:
-            await msg.edit_text("Video topilmadi!")
+            apology = await random_apology()
+            await msg.edit_text(f"Video topilmadi! {apology}")
             return
         await msg.edit_text("Link tayyorlanmoqda...")
         links = []
@@ -101,26 +113,25 @@ async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += str(i) + ". " + l + "\n"
             await msg.edit_text(text)
         else:
-            await msg.edit_text("Xatolik! " + ADMIN)
+            apology = await random_apology()
+            await msg.edit_text(f"Xatolik yuz berdi! {apology}\nAdmin: {ADMIN}")
     except Exception as e:
         logger.exception(e)
-        await msg.edit_text("Xatolik! " + ADMIN)
+        apology = await random_apology()
+        await msg.edit_text(f"Kutilmagan xatolik! {apology}\nAdmin: {ADMIN}")
     finally:
-        import shutil
         if os.path.exists(folder):
             shutil.rmtree(folder, ignore_errors=True)
 
-
 async def other(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("YouTube linkini yuboring!")
-
+    apology = await random_apology()
+    await update.message.reply_text(f"YouTube linkini yuboring! {apology}")
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, link))
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
