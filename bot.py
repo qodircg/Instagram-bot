@@ -56,10 +56,13 @@ async def catbox(path):
 async def download(url, folder):
     os.makedirs(folder, exist_ok=True)
     opts = {
-        "outtmpl": folder + "/%(title)s.%(ext)s",
-        "format": "best[ext=mp4]/best[height<=720]/best",
-        "quiet": True,
-        "no_warnings": True,
+    "outtmpl": folder + "/%(title)s.%(ext)s",
+    "format": "18/22/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+    "quiet": True,
+    "no_warnings": True,
+    "merge_output_format": "mp4",
+}
+
     }
     loop = asyncio.get_event_loop()
 
