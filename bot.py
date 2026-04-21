@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 import asyncio
 import httpx
 import yt_dlp
@@ -17,8 +16,6 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TOKEN_HERE")
 SHRINKME_API = os.getenv("SHRINKME_API", "e985afe0b57e6f737cb84e3109b2fbee91b93c32")
 ADMIN = "@qodircg"
-
-YT_RE = re.compile(r"(youtube\.com|youtu\.be)")
 
 
 async def shorten(url):
@@ -56,13 +53,10 @@ async def catbox(path):
 async def download(url, folder):
     os.makedirs(folder, exist_ok=True)
     opts = {
-    "outtmpl": folder + "/%(title)s.%(ext)s",
-    "format": "18/22/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
-    "quiet": True,
-    "no_warnings": True,
-    "merge_output_format": "mp4",
-}
-
+        "outtmpl": folder + "/video.%(ext)s",
+        "format": "18/22/best",
+        "quiet": True,
+        "no_warnings": True,
     }
     loop = asyncio.get_event_loop()
 
@@ -80,18 +74,13 @@ async def download(url, folder):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Salom! YouTube video linkini yuboring!\n"
-        "Masalan: https://youtu.be/xxxx\n\n"
-        "Muammo: " + ADMIN
+        "Salom! YouTube video linkini yuboring!\nMuammo: " + ADMIN
     )
 
 
 async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     uid = update.effective_user.id
-    if not YT_RE.search(url):
-        await update.message.reply_text("YouTube linki emas!")
-        return
     msg = await update.message.reply_text("Yuklanmoqda, kuting...")
     folder = "/tmp/yt_" + str(uid)
     try:
@@ -123,17 +112,13 @@ async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def other(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "YouTube linkini yuboring!\n"
-        "Masalan: https://youtu.be/xxxx"
-    )
+    await update.message.reply_text("YouTube linkini yuboring!")
 
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"youtube\.com|youtu\.be"), link))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, other))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, link))
     app.run_polling()
 
 
