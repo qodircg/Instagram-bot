@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "8514379747:AAF4EzgFC5idqJQtTW0nZhMETTczzHCZBwg"
+BOT_TOKEN = "8514379747:AAGDl0ajvUE157gUa46XoKmca5q0s6RP3yg"
 SHRINKME_API = os.getenv("SHRINKME_API", "YOUR_SHRINKME_API_HERE")
 ADMIN_ID = "@qodircg"
 
