@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TOKEN_HERE")
 SHRINKME_API = os.getenv("SHRINKME_API", "e985afe0b57e6f737cb84e3109b2fbee91b93c32")
 ADMIN = "@qodircg"
-IG_RE = re.compile(r"instagram\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)")
+
+YT_RE = re.compile(r"(youtube\.com|youtu\.be)")
 
 
 async def shorten(url):
@@ -55,9 +56,10 @@ async def catbox(path):
 async def download(url, folder):
     os.makedirs(folder, exist_ok=True)
     opts = {
-        "outtmpl": folder + "/%(id)s.%(ext)s",
-        "format": "best[ext=mp4]/best",
+        "outtmpl": folder + "/%(title)s.%(ext)s",
+        "format": "best[ext=mp4]/best[height<=720]/best",
         "quiet": True,
+        "no_warnings": True,
     }
     loop = asyncio.get_event_loop()
 
@@ -68,29 +70,31 @@ async def download(url, folder):
     await loop.run_in_executor(None, go)
     result = []
     for f in os.listdir(folder):
-        if f.endswith((".mp4", ".jpg", ".png")):
+        if f.endswith((".mp4", ".webm", ".mkv")):
             result.append(os.path.join(folder, f))
     return sorted(result)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Salom! Instagram reel yoki post linkini yuboring!\nMuammo: " + ADMIN
+        "Salom! YouTube video linkini yuboring!\n"
+        "Masalan: https://youtu.be/xxxx\n\n"
+        "Muammo: " + ADMIN
     )
 
 
 async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     uid = update.effective_user.id
-    if not IG_RE.search(url):
-        await update.message.reply_text("Instagram linki emas!")
+    if not YT_RE.search(url):
+        await update.message.reply_text("YouTube linki emas!")
         return
-    msg = await update.message.reply_text("Yuklanmoqda...")
-    folder = "/tmp/ig_" + str(uid)
+    msg = await update.message.reply_text("Yuklanmoqda, kuting...")
+    folder = "/tmp/yt_" + str(uid)
     try:
         files = await download(url, folder)
         if not files:
-            await msg.edit_text("Media topilmadi!")
+            await msg.edit_text("Video topilmadi!")
             return
         await msg.edit_text("Link tayyorlanmoqda...")
         links = []
@@ -116,13 +120,16 @@ async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def other(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Instagram linkini yuboring!")
+    await update.message.reply_text(
+        "YouTube linkini yuboring!\n"
+        "Masalan: https://youtu.be/xxxx"
+    )
 
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"instagram\.com"), link))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"youtube\.com|youtu\.be"), link))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, other))
     app.run_polling()
 
