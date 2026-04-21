@@ -1,124 +1,181 @@
-import logging
 import os
-import asyncio
-import httpx
-import yt_dlp
-from telegram import Update
-from telegram.ext import ApplicationBuilder
-from telegram.ext import CommandHandler
-from telegram.ext import MessageHandler
-from telegram.ext import filters
-from telegram.ext import ContextTypes
+import html
+import logging
+from collections import defaultdict
 
-logging.basicConfig(level=logging.INFO)
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
+from telegram import Update
+from telegram.constants import ChatAction
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
+load_dotenv()
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+
+if not TELEGRAM_BOT_TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN not found in environment variables")
+
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TOKEN_HERE")
-SHRINKME_API = os.getenv("SHRINKME_API", "e985afe0b57e6f737cb84e3109b2fbee91b93c32")
-ADMIN = "@qodircg"
+client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+# Память диалога в RAM: {user_id: [{"role": "...", "content": "..."}]}
+user_memory = defaultdict(list)
+
+SYSTEM_PROMPT = """
+Ты полезный AI-помощник в Telegram.
+Отвечай кратко, понятно и по делу.
+Если пользователь пишет по-русски — отвечай по-русски.
+Если просит код — давай рабочий пример.
+Если вопрос неясен — сначала уточни недостающие детали.
+"""
+
+MAX_HISTORY_MESSAGES = 12
+TELEGRAM_TEXT_LIMIT = 4000
 
 
-async def shorten(url):
-    try:
-        async with httpx.AsyncClient() as c:
-            r = await c.get(
-                "https://shrinkme.io/api",
-                params={"api": SHRINKME_API, "url": url},
-                timeout=10,
-            )
-            d = r.json()
-            if d.get("status") == "success":
-                return d["shortenedUrl"]
-    except Exception as e:
-        logger.error(e)
-    return url
+def build_conversation_text(history: list[dict], user_message: str) -> str:
+    """
+    Собирает историю в один текстовый prompt.
+    """
+    lines = []
+    for item in history[-MAX_HISTORY_MESSAGES:]:
+        role = "User" if item["role"] == "user" else "Assistant"
+        lines.append(f"{role}: {item['content']}")
+    lines.append(f"User: {user_message}")
+    lines.append("Assistant:")
+    return "\n".join(lines)
 
 
-async def catbox(path):
-    try:
-        async with httpx.AsyncClient() as c:
-            with open(path, "rb") as f:
-                r = await c.post(
-                    "https://catbox.moe/user/api.php",
-                    data={"reqtype": "fileupload"},
-                    files={"fileToUpload": f},
-                    timeout=120,
-                )
-                return r.text.strip()
-    except Exception as e:
-        logger.error(e)
-    return ""
-
-
-async def download(url, folder):
-    os.makedirs(folder, exist_ok=True)
-    opts = {
-        "outtmpl": folder + "/video.%(ext)s",
-        "format": "18/22/best",
-        "quiet": True,
-        "no_warnings": True,
-    }
-    loop = asyncio.get_event_loop()
-
-    def go():
-        with yt_dlp.YoutubeDL(opts) as y:
-            y.download([url])
-
-    await loop.run_in_executor(None, go)
-    result = []
-    for f in os.listdir(folder):
-        if f.endswith((".mp4", ".webm", ".mkv")):
-            result.append(os.path.join(folder, f))
-    return sorted(result)
+def split_text(text: str, chunk_size: int = TELEGRAM_TEXT_LIMIT):
+    """
+    Делит длинный текст на части для Telegram.
+    """
+    parts = []
+    while len(text) > chunk_size:
+        split_at = text.rfind("\n", 0, chunk_size)
+        if split_at == -1:
+            split_at = chunk_size
+        parts.append(text[:split_at])
+        text = text[split_at:].lstrip()
+    if text:
+        parts.append(text)
+    return parts
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Salom! YouTube video linkini yuboring!\nMuammo: " + ADMIN
+    text = (
+        "Привет! Я AI Telegram Bot.\n\n"
+        "Что умею:\n"
+        "• отвечаю на вопросы\n"
+        "• помогаю с кодом\n"
+        "• объясняю тексты\n"
+        "• генерирую идеи\n\n"
+        "Команды:\n"
+        "/start — запуск\n"
+        "/help — помощь\n"
+        "/new — очистить историю диалога\n\n"
+        "Просто напиши сообщение."
+    )
+    await update.message.reply_text(text)
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "Примеры:\n"
+        "• Напиши продающий текст для магазина одежды\n"
+        "• Объясни, что делает этот Python-код\n"
+        "• Составь план изучения английского на 30 дней\n"
+        "• Напиши Telegram-бота на aiogram\n\n"
+        "Если хочешь начать новый диалог без старого контекста — используй /new"
+    )
+    await update.message.reply_text(text)
+
+
+async def new_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_memory[user_id] = []
+    await update.message.reply_text("История диалога очищена ✅")
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+
+    user_id = update.effective_user.id
+    user_text = update.message.text.strip()
+
+    if not user_text:
+        return
+
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id,
+        action=ChatAction.TYPING
     )
 
+    history = user_memory[user_id]
+    prompt_text = build_conversation_text(history, user_text)
 
-async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-    uid = update.effective_user.id
-    msg = await update.message.reply_text("Yuklanmoqda, kuting...")
-    folder = "/tmp/yt_" + str(uid)
     try:
-        files = await download(url, folder)
-        if not files:
-            await msg.edit_text("Video topilmadi!")
-            return
-        await msg.edit_text("Link tayyorlanmoqda...")
-        links = []
-        for f in files:
-            u = await catbox(f)
-            if u:
-                s = await shorten(u)
-                links.append(s)
-        if links:
-            text = "Tayyor! Reklama korib yuklab oling:\n\n"
-            for i, l in enumerate(links, 1):
-                text += str(i) + ". " + l + "\n"
-            await msg.edit_text(text)
-        else:
-            await msg.edit_text("Xatolik! " + ADMIN)
+        response = await client.responses.create(
+            model=OPENAI_MODEL,
+            instructions=SYSTEM_PROMPT,
+            input=prompt_text,
+        )
+
+        answer = (response.output_text or "").strip()
+
+        if not answer:
+            answer = "Не удалось получить ответ от модели. Попробуй ещё раз."
+
+        # Сохраняем в память
+        history.append({"role": "user", "content": user_text})
+        history.append({"role": "assistant", "content": answer})
+        user_memory[user_id] = history[-MAX_HISTORY_MESSAGES:]
+
+        for part in split_text(answer):
+            await update.message.reply_text(part)
+
     except Exception as e:
-        logger.exception(e)
-        await msg.edit_text("Xatolik! " + ADMIN)
-    finally:
-        import shutil
-        if os.path.exists(folder):
-            shutil.rmtree(folder, ignore_errors=True)
+        logger.exception("OpenAI request error: %s", e)
+        safe_error = html.escape(str(e))
+        await update.message.reply_text(
+            f"Ошибка при обращении к AI-сервису:\n<code>{safe_error}</code>",
+            parse_mode="HTML"
+        )
 
 
-async def other(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("YouTube linkini yuboring!")
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error("Telegram error:", exc_info=context.error)
 
 
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, link))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("new", new_chat))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    app.add_error_handler(error_handler)
+
+    print("AI Telegram bot started...")
     app.run_polling()
 
 
