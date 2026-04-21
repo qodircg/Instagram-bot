@@ -17,7 +17,7 @@ ADMIN = "@qodircg"
 
 # Qiziqarli uzr so'rash matnlari
 APOLOGY_MESSAGES = [
-    "😅 Kechirasiz, xayolim bir zumda Marsga uchib ketgan edi. Marsliklar video yuklashda yordam berishmadi... Qaytadan urunib ko'ring!",
+    "😅 Kechirasiz, xayolim bir zumda Marsga uchib ketgan edi. Marsliklar video yuklashda yordam berishmadi exx... Qaytadan urunib ko'ring!",
     "🤖 Xayolimdagi robotlar videoni yeyib qo'yishdi! Kechirasiz, qayta uruning.",
     "🐱 Xayolimdagi mushuk klaviaturada yurib, kodlarni buzib tashladi. Kechirasiz! Admin bilan bog'lanishingiz mumkin: " + ADMIN,
     "🎈 Xayolim uchib ketdi, hozir uni qaytarib olishga harakat qilaman... Ammo video yuklanmadi. Iltimos, keyinroq urunib ko'ring!",
