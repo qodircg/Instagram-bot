@@ -377,7 +377,7 @@ async def upload_catbox(path):
 
 
 def get_video_info(url):
-    ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+    ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True, "format": "bestvideo+bestaudio/best"}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -407,7 +407,7 @@ async def download_video(url, folder, quality="best", is_audio=False):
             "480": "best[height<=480]",
             "720": "22/best[height<=720]",
             "1080": "best[height<=1080]",
-            "best": "18/22/best",
+            "best": "bestvideo+bestaudio/best",
         }.get(quality, "18/22/best")
         opts = {
             "outtmpl": folder + "/video.%(ext)s",
